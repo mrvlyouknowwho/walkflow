@@ -30,6 +30,11 @@ struct Cli {
     /// List the jobs and steps, then exit.
     #[arg(short, long)]
     list: bool,
+
+    /// Jump to a step (number or name): earlier steps run automatically to build
+    /// up state, then walkflow goes interactive from this one.
+    #[arg(short, long)]
+    from: Option<String>,
 }
 
 fn main() {
@@ -67,6 +72,11 @@ fn run() -> Result<()> {
 
     let (job_id, job) = wf.select_job(cli.job.as_deref())?;
 
+    let from = match &cli.from {
+        Some(sel) => resolve_step(&job.steps, sel)?,
+        None => 0,
+    };
+
     // Seed the runner env with workflow-level env; job-level env is layered in
     // by the runner itself.
     let base_env: IndexMap<String, String> = wf.env.clone();
@@ -79,12 +89,35 @@ fn run() -> Result<()> {
     );
 
     let mut r = runner::Runner::new(workspace, base_env, cli.yes);
-    let report = r.run_job(job_id, job)?;
+    let report = r.run_job(job_id, job, from)?;
 
     if report.failed > 0 {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// Resolve a `--from` selector (a 1-based step number or a step name/substring)
+/// to a 0-based step index.
+fn resolve_step(steps: &[workflow::Step], sel: &str) -> Result<usize> {
+    if let Ok(n) = sel.parse::<usize>() {
+        if n >= 1 && n <= steps.len() {
+            return Ok(n - 1);
+        }
+        return Err(anyhow!("--from {n} is out of range (1..={})", steps.len()));
+    }
+    if let Some(i) = steps.iter().position(|s| s.name.as_deref() == Some(sel)) {
+        return Ok(i);
+    }
+    let needle = sel.to_lowercase();
+    if let Some(i) = steps
+        .iter()
+        .enumerate()
+        .position(|(i, s)| s.label(i).to_lowercase().contains(&needle))
+    {
+        return Ok(i);
+    }
+    Err(anyhow!("--from '{sel}' matched no step by number, name, or label"))
 }
 
 /// Find a workflow when the user didn't name one: scan .github/workflows for a

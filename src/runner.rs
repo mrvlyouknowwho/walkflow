@@ -46,7 +46,7 @@ impl Runner {
         }
     }
 
-    pub fn run_job(&mut self, job_id: &str, job: &Job) -> Result<RunReport> {
+    pub fn run_job(&mut self, job_id: &str, job: &Job, from: usize) -> Result<RunReport> {
         let job_wd = job
             .working_directory
             .as_ref()
@@ -59,10 +59,20 @@ impl Runner {
 
         let mut report = RunReport { ran: 0, skipped: 0, failed: 0 };
         println!("\n▶ job \x1b[1m{}\x1b[0m — {} step(s)\n", job.name.as_deref().unwrap_or(job_id), job.steps.len());
+        if from > 0 {
+            println!(
+                "\x1b[90m⏩ fast-forwarding steps 1..{} to build up state; interactive from step {}\x1b[0m\n",
+                from, from + 1
+            );
+        }
 
         for (i, step) in job.steps.iter().enumerate() {
+            // Steps before --from run automatically so later steps see the right
+            // accumulated state; from --from onward we hand control to the user.
+            let interactive_here = self.interactive && i >= from;
             let label = step.label(i);
-            println!("\x1b[36m┌─ step {}/{}: {}\x1b[0m", i + 1, job.steps.len(), label);
+            let ff = if i < from { " \x1b[90m(fast-forward)\x1b[0m" } else { "" };
+            println!("\x1b[36m┌─ step {}/{}: {}\x1b[0m{}", i + 1, job.steps.len(), label, ff);
 
             if step.run.is_none() {
                 // A `uses:` (or empty) step — walkflow's host runner can't execute
@@ -75,17 +85,23 @@ impl Runner {
                 continue;
             }
 
-            match self.prompt_pre(step)? {
-                PreAction::Skip => {
-                    println!("\x1b[33m└─ skipped\x1b[0m\n");
-                    report.skipped += 1;
-                    continue;
+            if interactive_here {
+                match self.prompt_pre(step)? {
+                    PreAction::Skip => {
+                        println!("\x1b[33m└─ skipped\x1b[0m\n");
+                        report.skipped += 1;
+                        continue;
+                    }
+                    PreAction::Quit => {
+                        println!("\x1b[33m└─ quit\x1b[0m\n");
+                        break;
+                    }
+                    PreAction::Run => {}
                 }
-                PreAction::Quit => {
-                    println!("\x1b[33m└─ quit\x1b[0m\n");
-                    break;
+            } else if let Some(run) = &step.run {
+                for line in run.lines() {
+                    println!("\x1b[90m│    $ {line}\x1b[0m");
                 }
-                PreAction::Run => {}
             }
 
             let mut command = step.run.clone().unwrap();
@@ -97,13 +113,21 @@ impl Runner {
                     break;
                 }
                 report.failed += 1;
+                if !interactive_here {
+                    // No user to prompt (fast-forward region or non-interactive
+                    // run). A failure here means we can't reach the target state.
+                    let why = if i < from {
+                        "failed while fast-forwarding to --from — fix it or use a lower --from"
+                    } else {
+                        "step failed (non-interactive); stopping"
+                    };
+                    println!("\x1b[31m└─ {why}\x1b[0m\n");
+                    return Ok(report);
+                }
                 match self.prompt_fail()? {
                     FailAction::Retry => {
-                        // Allow editing before retry when interactive.
-                        if self.interactive {
-                            if let Some(edited) = self.maybe_edit(&command)? {
-                                command = edited;
-                            }
+                        if let Some(edited) = self.maybe_edit(&command)? {
+                            command = edited;
                         }
                         report.failed -= 1; // this attempt superseded by the retry
                         continue;
