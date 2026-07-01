@@ -18,6 +18,41 @@ Hit `s` and you're dropped into a shell **in the workspace, with every environme
 
 Retry lets you edit the command in `$EDITOR` and run it again immediately. The inner loop that used to be "push and pray" is now seconds long.
 
+## A session
+
+```console
+$ walkflow
+walkflow — .github/workflows/ci.yml · job 'build'
+
+▶ job build — 6 step(s)
+
+┌─ step 1/6: checkout
+│  uses: actions/checkout@v4 — not executable in host mode, skipping.
+
+┌─ step 2/6: install deps
+│    $ npm ci
+│  [enter] run · [s]hell · [k] skip · [q] quit >           # ⏎
+│  running in /home/me/app
+└─ ok
+
+┌─ step 3/6: run tests
+│    $ npm test
+│  [enter] run · [s]hell · [k] skip · [q] quit >           # ⏎
+│  running in /home/me/app
+FAIL src/auth.test.ts  ✗ token refresh
+│  step failed. [r]etry · [s]hell · [c]ontinue · [q]uit >  # s
+│  entering shell (/bin/zsh); `exit` to return to walkflow
+$ echo $NODE_ENV        # inspect the exact env step 3 saw
+test
+$ vim src/auth.ts       # fix it right here
+$ exit
+│  back in walkflow
+│  step failed. [r]etry · [s]hell · [c]ontinue · [q]uit >  # r
+└─ ok
+```
+
+No commit. No push. No 4-minute runner wait to find out.
+
 ## Why not just use `act`?
 
 [`act`](https://github.com/nektos/act) is great for *replaying* a whole workflow in Docker. But it runs top-to-bottom and stops — there's no pausing between steps, no dropping into the live state, no edit-and-continue. That's [a years-open feature request](https://github.com/nektos/act/issues/1050). `walkflow` is built around exactly that: the interactive step-through inner loop, not the full replay.
