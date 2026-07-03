@@ -296,8 +296,13 @@ impl Runner {
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".into());
         let tmp = std::env::temp_dir().join(format!("walkflow-edit-{}.sh", std::process::id()));
         std::fs::write(&tmp, command)?;
-        Command::new(&editor)
-            .arg(&tmp)
+        // Run through a shell so $EDITOR may carry flags (e.g. "code -w",
+        // "vim -u NONE") — the same convention git uses for GIT_EDITOR.
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("{editor} \"$1\"", editor = editor))
+            .arg(editor.clone()) // $0
+            .arg(&tmp) // $1 — the file, safely passed as a positional
             .status()
             .with_context(|| format!("opening editor {editor}"))?;
         let edited = std::fs::read_to_string(&tmp)?;
