@@ -81,6 +81,8 @@ From your repo root:
 walkflow                       # finds .github/workflows/<the one file>
 walkflow ci.yml --job build    # pick a file and job
 walkflow --list                # show jobs and steps, then exit
+walkflow --from 4               # auto-run steps 1–3, go interactive from step 4
+walkflow --from "run tests"     # ...or pick the step by name/substring
 walkflow -y                     # run everything, no pausing (great for a fast local sanity check)
 ```
 
@@ -115,7 +117,7 @@ These are honest limitations, not silent ones — `walkflow` tells you when it h
 - **Docker runner** — run steps in the real `ubuntu-latest` image for full parity (Pro).
 - `uses:` execution via a bundled action executor.
 - Expression + `if:` evaluation.
-- `--from <step>` / `--only <step>` to jump straight to the step you're debugging.
+- `--only <step>` to run a single step in isolation.
 
 ## License
 
