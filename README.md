@@ -122,3 +122,4 @@ These are honest limitations, not silent ones — `walkflow` tells you when it h
 ## License
 
 MIT © walkflow contributors
+
